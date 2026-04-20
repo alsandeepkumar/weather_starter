@@ -4,6 +4,7 @@ import sqlite3
 from fastapi import FastAPI
 
 from app.routers.locations import router as locations_router
+from app.routers.alerts import router as alerts_router
 
 DB_PATH = os.getenv("DATABASE_PATH", "weather.db")
 
@@ -38,6 +39,30 @@ app = FastAPI(
 )
 
 app.include_router(locations_router, prefix="/api")
+app.include_router(alerts_router, prefix="/api")
+
+
+@app.on_event("startup")
+async def start_alert_checker():
+    import asyncio
+    from app.config import settings
+    from app.services import alerts
+
+    async def _loop():
+        interval = settings.ALERT_CHECK_INTERVAL_MIN * 60
+        while True:
+            try:
+                if alerts.is_event_active():
+                    monitored = [s.strip() for s in settings.MONITORED_AREAS.split(",") if s.strip()]
+                    alerts.evaluate_all(monitored)
+            except Exception:
+                # swallow exceptions to keep scheduler running
+                pass
+            await asyncio.sleep(interval)
+
+    # launch background task but don't await it
+    import asyncio as _asyncio
+    _asyncio.create_task(_loop())
 
 
 @app.get("/health")

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import List, Dict
 
 import httpx
 
@@ -25,6 +26,45 @@ class SingaporeWeatherClient:
 
         with httpx.Client(timeout=self.timeout_seconds, headers=headers) as client:
             return self._fetch_json(client, f"{self.base_url}{self.two_hour_path}")
+
+    def get_two_hour_forecast(self) -> List[Dict[str, str]]:
+        """Fetch and return the two-hour area forecasts.
+
+        Returns a list of dicts with keys: `area`, `forecast`, and `timestamp`.
+        Raises `WeatherProviderError` on any failure to fetch or parse data.
+        """
+        try:
+            payload = self.fetch_latest_forecast_payload()
+        except WeatherProviderError:
+            raise
+
+        data = payload if isinstance(payload, dict) else {}
+        items = data.get("items") or []
+        if not items:
+            raise WeatherProviderError("Forecast response contains no items")
+
+        latest = items[0]
+        forecasts = latest.get("forecasts") or []
+        timestamp = latest.get("update_timestamp") or latest.get("timestamp") or ""
+        valid_period_text = latest.get("valid_period", {}).get("text")
+
+        result: List[Dict[str, str]] = []
+        for entry in forecasts:
+            area = entry.get("area")
+            forecast = entry.get("forecast")
+            if not area or forecast is None:
+                continue
+            result.append({
+                "area": area,
+                "forecast": forecast,
+                "timestamp": timestamp,
+                "valid_period_text": valid_period_text,
+            })
+
+        if not result:
+            raise WeatherProviderError("No valid area forecasts found in response")
+
+        return result
 
     def get_current_weather(self, latitude: float, longitude: float) -> dict:
         payload = self.fetch_latest_forecast_payload()
@@ -116,3 +156,21 @@ class SingaporeWeatherClient:
                 nearest_name = name
 
         return nearest_name
+
+
+def get_aqi_for_locations(locations: List[str]) -> Dict[str, int]:
+    # Placeholder implementation: map each location to None.
+    # Real implementation should call an AQI provider or database.
+    result: Dict[str, int] = {}
+    for loc in locations:
+        result[loc] = None
+    return result
+
+
+def get_rain_forecast_for_locations(locations: List[str]) -> Dict[str, float]:
+    # Placeholder: return None for each location. Real implementation should
+    # parse forecast payloads to compute expected max rainfall rate (mm/hr).
+    result: Dict[str, float] = {}
+    for loc in locations:
+        result[loc] = None
+    return result
